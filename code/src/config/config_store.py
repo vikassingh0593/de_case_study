@@ -10,7 +10,6 @@ import yaml
 import sys
 import yaml
 from datetime import datetime
-from polygon import RESTClient
 import __init__
 
 spark = SparkSession.builder.appName("de_case_study").getOrCreate()
@@ -93,7 +92,7 @@ class UCSetup:
             "base": base,
             "checkpoint_path": f"{base}/checkpoint",
             "logs_path": f"{base}/logs",
-            "landing_zone": f"{base}/landing_zone",
+            "landing_zone_path": f"{base}/landing_zone",
             "watermark_path": f"{base}/watermark",
         }
 
@@ -128,16 +127,9 @@ class UCSetup:
         paths = self.get_paths(base)
         self.clean_paths(paths)
         self.create_paths(paths)
-        return paths
+        print("Environment reset.")
+        print(f"Paths created {paths}")
 
-    def ensure_env(self) -> Dict[str, str]:
-        """
-        Non-destructive ensure: create catalogs/schemas/volume if missing,
-        then ensure folders exist (no deletes).
-        """
-        self.create_catalogs()
-        self.create_dev_schemas()
-        base = self.ensure_infra_and_volume()
-        paths = self.get_paths(base)
-        self.create_paths(paths)
-        return paths
+
+# helper = UCSetup(spark, dbutils)
+# helper.reset_env()
