@@ -3,13 +3,15 @@ import __init__
 from src.config.config_store import *
 
 # COMMAND ----------
-# Install the Polygon API client
+
 pip install -U polygon-api-client
 
 # COMMAND ----------
+
 helper = UCSetup(spark, dbutils)
 
 # COMMAND ----------
+
 def fetch_minute_bars_to_spark(spark, client, ticker, multiplier, start_date, end_date, lmt):
     # 1) Fetch aggregates (minute bars)
     aggs = []
@@ -78,18 +80,20 @@ def fetch_minute_bars_to_spark(spark, client, ticker, multiplier, start_date, en
         .csv(out_path)
 
 # COMMAND ----------
+
 from polygon import RESTClient
 client = RESTClient(api_key=APIKEY)
 
 ticker = "AAPL"
 timespan = "minute"
 multiplier = 1
-start_date = "2025-08-15"
-end_date = "2025-08-18"
+start_date = "2025-08-13"
+end_date = "2025-08-14"
 lmt = 50000
 fetch_minute_bars_to_spark(spark, client, ticker, multiplier, start_date, end_date, lmt)
 
 # COMMAND ----------
+
 df = (
     spark.read
          .format("csv")
@@ -101,6 +105,16 @@ df = (
 df.display()
 
 # COMMAND ----------
+
+print(f"{helper.get_paths()['landing_zone_path']}/AAPL_minute_*")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC csv done
+
+# COMMAND ----------
+
 import json
 from datetime import datetime
 
@@ -132,6 +146,7 @@ dbutils.fs.put(
 )
 
 # COMMAND ----------
+
 import json
 
 json_path = f"{helper.get_paths()['landing_zone_path']}/AAPL_minute_20250819_20250820.json"

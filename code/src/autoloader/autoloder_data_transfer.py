@@ -3,26 +3,23 @@ import __init__
 from src.config.config_store import *
 
 # COMMAND ----------
-# Install the Polygon API client
-pip install -U polygon-api-client
 
-# COMMAND ----------
-from polygon import RESTClient
-
-# COMMAND ----------
 helper = UCSetup(spark, dbutils)
 
 # COMMAND ----------
+
 landing_zone = helper.get_paths()["landing_zone_path"]
 checkpoint = helper.get_paths()['checkpoint_path']
 landing_zone, checkpoint
 
 # COMMAND ----------
+
 csv_path = f"{landing_zone}/AAPL_minute_*.csv"
 table_name = "aapl_minutes_autoloader"
 bronze_table = f"dev.bronze.{table_name}"
 
 # COMMAND ----------
+
 import pyspark.sql.functions as sf
 
 schema = """
@@ -61,4 +58,5 @@ bronze_writer = (
 )
 
 # COMMAND ----------
+
 display(spark.sql(f"SELECT * FROM {bronze_table}"))
