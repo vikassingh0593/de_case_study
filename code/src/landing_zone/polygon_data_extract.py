@@ -87,7 +87,7 @@ client = RESTClient(api_key=APIKEY)
 ticker = "AAPL"
 timespan = "minute"
 multiplier = 1
-start_date = "2025-08-13"
+start_date = "2025-08-11"
 end_date = "2025-08-14"
 lmt = 50000
 fetch_minute_bars_to_spark(spark, client, ticker, multiplier, start_date, end_date, lmt)
@@ -147,9 +147,41 @@ dbutils.fs.put(
 
 # COMMAND ----------
 
-import json
+# # Step 1: List all files in the landing zone directory
+# landing_zone_path = helper.get_paths()['landing_zone_path']
+# files = dbutils.fs.ls(landing_zone_path)
 
-json_path = f"{helper.get_paths()['landing_zone_path']}/AAPL_minute_20250819_20250820.json"
-json_str = dbutils.fs.head(json_path, 10000000)  # read up to 10MB (adjust if needed)
-data = json.loads(json_str)
-print(data)
+# # Step 2: Filter for files starting with 'AAPL_minute_'
+# matching_files = [f.path for f in files if f.name.startswith('AAPL_minute_')]
+
+# # Step 3: Process each file as needed (example for JSON files)
+# for file_path in matching_files:
+#     if file_path.endswith('.json'):
+#         json_str = dbutils.fs.head(file_path, 10000000)  # up to 10MB
+#         data = json.loads(json_str)
+#         print(f"Data from {file_path}:", data)
+
+# df_json = spark.read.json(f"{landing_zone_path}/AAPL_minute_*.json")
+# from pyspark.sql.functions import explode
+
+# df_json = df_json.select(
+#     "ticker",
+#     explode("results").alias("result")
+# )
+# df_json = df_json.select(
+#     "ticker",
+#     "result.v",
+#     "result.vw",
+#     "result.o",
+#     "result.c",
+#     "result.h",
+#     "result.l",
+#     "result.t",
+#     "result.n"
+# )
+
+# df_json.display()
+
+# COMMAND ----------
+
+

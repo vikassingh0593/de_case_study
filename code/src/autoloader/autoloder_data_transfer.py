@@ -10,9 +10,6 @@ helper = UCSetup(spark, dbutils)
 
 landing_zone = helper.get_paths()["landing_zone_path"]
 checkpoint = helper.get_paths()['checkpoint_path']
-landing_zone, checkpoint
-
-# COMMAND ----------
 
 csv_path = f"{landing_zone}/AAPL_minute_*.csv"
 table_name = "aapl_minutes_autoloader"

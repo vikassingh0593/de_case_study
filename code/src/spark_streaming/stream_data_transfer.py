@@ -1,88 +1,29 @@
 # Databricks notebook source
-import pandas as pd
-from pyspark.sql.types import StructType, StructField, DoubleType, LongType, StringType
-from pyspark.sql.functions import col, from_unixtime, to_timestamp
+import __init__
+from src.config.config_store import *
 
 # COMMAND ----------
-apiKey = "XQf22C5alIB5vXvUqKsjb4f7BZIQIKaH"
+
+helper = UCSetup(spark, dbutils)
 
 # COMMAND ----------
+
 pip install -U polygon-api-client
 
 # COMMAND ----------
-from polygon import RESTClient
-import pandas as pd
-from pyspark.sql.types import StructType, StructField, DoubleType, LongType, StringType
-from pyspark.sql.functions import col, to_timestamp, from_unixtime
-from pyspark.sql import SparkSession
 
-def fetch_minute_bars_to_spark(spark, client, ticker, multiplier, start_date, end_date, lmt):
-    # 1) Fetch aggregates (minute bars)
-    aggs = []
-    for a in client.list_aggs(
-        ticker,
-        multiplier,
-        timespan,
-        from_=start_date,
-        to=end_date,
-        limit=lmt
-    ):
-        aggs.append(a)
+landing_zone = helper.get_paths()["landing_zone_path"]
+checkpoint = helper.get_paths()['checkpoint_path']
 
-    # 2) Convert SDK objects to dicts with canonical Polygon keys
-    aggs_dicts = []
-    for a in aggs:
-        d = a.__dict__ if hasattr(a, "__dict__") else (a._asdict() if hasattr(a, "_asdict") else dict(a))
-        aggs_dicts.append({
-            "open": d.get("open", d.get("o")),
-            "high": d.get("high", d.get("h")),
-            "low":  d.get("low",  d.get("l")),
-            "close": d.get("close", d.get("c")),
-            "volume": d.get("volume", d.get("v")),
-            "vwap": d.get("vwap", d.get("vw")),
-            "timestamp": d.get("timestamp", d.get("t")),
-            "transactions": d.get("transactions", d.get("n")),
-            "otc": str(d.get("otc")).lower() if d.get("otc") is not None else None,
-        })
-
-    # 3) pandas DataFrame
-    df_pd = pd.DataFrame(aggs_dicts)
-
-    # 4) Spark schema (matches your request)
-    schema = StructType([
-        StructField("open", DoubleType(), True),
-        StructField("high", DoubleType(), True),
-        StructField("low", DoubleType(), True),
-        StructField("close", DoubleType(), True),
-        StructField("volume", LongType(), True),
-        StructField("vwap", DoubleType(), True),
-        StructField("timestamp", LongType(), True),
-        StructField("transactions", LongType(), True),
-        StructField("otc", StringType(), True),
-    ])
-
-    # 5) Set Spark session timezone to IST and create Spark DataFrame
-    spark.conf.set("spark.sql.session.timeZone", "Asia/Kolkata")
-    spark_df = (
-        spark.createDataFrame(df_pd, schema=schema)
-             .withColumn("TimestampIst", (col("timestamp") / 1000).cast("double"))
-             .withColumn("TimestampIst", to_timestamp(from_unixtime(col("TimestampIst"))))
-    )
-
-    return spark_df
-
-client = RESTClient(api_key=apiKey)
-ticker = "AAPL"
-timespan = "minute"
-multiplier = 1
-start_date = "2025-09-19"
-end_date = "2025-09-20"
-lmt = 50000
-spark_df = fetch_minute_bars_to_spark(spark, client, ticker, multiplier, start_date, end_date, lmt)
-spark_df.display()
+csv_path = f"{landing_zone}/AAPL_minute_*.csv"
+table_name = "aapl_minutes_autoloader"
+bronze_table = f"dev.bronze.{table_name}"
 
 # COMMAND ----------
+
 import json
+from polygon import RESTClient
+client = RESTClient(api_key=APIKEY)
 
 resp = client.get_aggs(
     ticker="AAPL",
@@ -95,3 +36,40 @@ resp = client.get_aggs(
 )
 data = json.loads(resp.data)
 data
+
+# COMMAND ----------
+
+from pyspark.sql.functions import expr
+from pyspark.sql.streaming import DataStreamWriter
+
+# Ingest files continuously
+df_stream = (spark.readStream
+    .format("cloudFiles")  # Use 'cloudFiles' for Auto Loader
+    .option("cloudFiles.format", "json")
+    .load("/mnt/landing_zone"))  # Or use 'readStream.json' directly for few files
+
+# Example: Flatten nested field and extract timestamp
+df_stream = df_stream.selectExpr("explode(results) as result", "ticker")
+df_stream = df_stream.withColumn("timestamp", expr("CAST(result.t AS TIMESTAMP)"))
+
+# JOIN with another static or streaming table (example: reference data or lookup table)
+reference_table = spark.read.table("my_reference_table")
+joined = df_stream.join(reference_table, on="ticker", how="left")
+
+# AGGREGATION with WATERMARK for late/delayed data handling
+from pyspark.sql.functions import window
+agg_df = (joined
+    .withWatermark("timestamp", "10 minutes")  # allow lateness up to 10 minutes
+    .groupBy(
+        window("timestamp", "5 minutes"),  # aggregate in 5-minute windows
+        "ticker"
+    )
+    .agg({"result.v": "sum", "result.n": "max"}))
+
+# DISPLAY as a streaming table
+query = (agg_df
+    .writeStream
+    .outputMode("update")
+    .format("console")
+    .start())
+

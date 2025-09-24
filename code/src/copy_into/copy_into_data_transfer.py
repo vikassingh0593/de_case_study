@@ -14,16 +14,16 @@ landing_zone, checkpoint
 
 # COMMAND ----------
 
-csv_path = f'{landing_zone}/AAPL_minute_20250813_20250814'
+csv_path = f'{landing_zone}/AAPL_minute_20250811_20250814'
 bronze_table = "dev.bronze.aapl_minutes_copy_into"
 
 # COMMAND ----------
 
-# %sql
-
-# drop table dev.bronze.aapl_minutes_copy_into;
-# CREATE TABLE IF NOT EXISTS dev.bronze.aapl_minutes_copy_into
-# USING DELTA;
+# MAGIC %sql
+# MAGIC
+# MAGIC -- drop table dev.bronze.aapl_minutes_copy_into;
+# MAGIC -- CREATE TABLE IF NOT EXISTS dev.bronze.aapl_minutes_copy_into
+# MAGIC -- USING DELTA;
 
 # COMMAND ----------
 
