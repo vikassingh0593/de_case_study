@@ -8,68 +8,50 @@ helper = UCSetup(spark, dbutils)
 
 # COMMAND ----------
 
-pip install -U polygon-api-client
-
-# COMMAND ----------
-
 landing_zone = helper.get_paths()["landing_zone_path"]
 checkpoint = helper.get_paths()['checkpoint_path']
 
-csv_path = f"{landing_zone}/AAPL_minute_*.csv"
-table_name = "aapl_minutes_autoloader"
-bronze_table = f"dev.bronze.{table_name}"
+bronze_table = f"dev.bronze.spark_streaming_save"
 
 # COMMAND ----------
 
-import json
-from polygon import RESTClient
-client = RESTClient(api_key=APIKEY)
+from pyspark.sql.functions import window, current_timestamp
 
-resp = client.get_aggs(
-    ticker="AAPL",
-    multiplier=1,
-    timespan="month",
-    from_="2025-09-19",
-    to="2025-09-19",
-    limit=50000,
-    raw=True
+# 1) Create streaming source (rate generator)
+rate_df = (
+    spark
+    .readStream
+    .format("rate")
+    .option("rowsPerSecond", 100)
+    .load()
 )
-data = json.loads(resp.data)
-data
+
+# 2) Apply watermark and windowed aggregation
+agg_df = (
+    rate_df
+    .withWatermark("timestamp", "1 minute")  # Accept data up to 1 minute late
+    .groupBy(window("timestamp", "10 seconds"))
+    .count()
+    .withColumn("batch_time", current_timestamp())
+)
+
+# 3) Write data to Delta table with checkpointing
+(
+    agg_df.writeStream
+        .outputMode("append")
+        .option("checkpointLocation", f"{checkpoint}/spark_streaming_save")
+        .option("mergeSchema", "true")
+        # .trigger(availableNow=True)
+        .toTable(bronze_table)
+)
+
 
 # COMMAND ----------
 
-from pyspark.sql.functions import expr
-from pyspark.sql.streaming import DataStreamWriter
+# MAGIC %sql
+# MAGIC select *
+# MAGIC from dev.bronze.spark_streaming_save
 
-# Ingest files continuously
-df_stream = (spark.readStream
-    .format("cloudFiles")  # Use 'cloudFiles' for Auto Loader
-    .option("cloudFiles.format", "json")
-    .load("/mnt/landing_zone"))  # Or use 'readStream.json' directly for few files
+# COMMAND ----------
 
-# Example: Flatten nested field and extract timestamp
-df_stream = df_stream.selectExpr("explode(results) as result", "ticker")
-df_stream = df_stream.withColumn("timestamp", expr("CAST(result.t AS TIMESTAMP)"))
-
-# JOIN with another static or streaming table (example: reference data or lookup table)
-reference_table = spark.read.table("my_reference_table")
-joined = df_stream.join(reference_table, on="ticker", how="left")
-
-# AGGREGATION with WATERMARK for late/delayed data handling
-from pyspark.sql.functions import window
-agg_df = (joined
-    .withWatermark("timestamp", "10 minutes")  # allow lateness up to 10 minutes
-    .groupBy(
-        window("timestamp", "5 minutes"),  # aggregate in 5-minute windows
-        "ticker"
-    )
-    .agg({"result.v": "sum", "result.n": "max"}))
-
-# DISPLAY as a streaming table
-query = (agg_df
-    .writeStream
-    .outputMode("update")
-    .format("console")
-    .start())
 
